@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::config::Theme;
+use crate::config::{Config, Theme};
 
 const TITLE_MAIN: &[&str] = &[
     "████████ ██   ██ ██████  ██   ██  ██████  ███████",
@@ -25,15 +25,20 @@ fn render_flat_title(theme: &Theme, dialog_width: u16) -> Vec<Line<'static>> {
     let left_pad = inner_width.saturating_sub(title_width) / 2;
     let padding = " ".repeat(left_pad);
 
-    TITLE_MAIN.iter().map(|line| {
-        let styled_line: String = line.chars().map(|ch| {
-            if ch != ' ' { '█' } else { ' ' }
-        }).collect();
-        Line::from(vec![
-            Span::raw(padding.clone()),
-            Span::styled(styled_line, Style::default().fg(main_color)),
-        ]).alignment(Alignment::Left)
-    }).collect()
+    TITLE_MAIN
+        .iter()
+        .map(|line| {
+            let styled_line: String = line
+                .chars()
+                .map(|ch| if ch != ' ' { '█' } else { ' ' })
+                .collect();
+            Line::from(vec![
+                Span::raw(padding.clone()),
+                Span::styled(styled_line, Style::default().fg(main_color)),
+            ])
+            .alignment(Alignment::Left)
+        })
+        .collect()
 }
 
 pub fn render_welcome_dialog(f: &mut Frame, theme: &Theme) {
@@ -95,7 +100,9 @@ pub fn render_welcome_dialog(f: &mut Frame, theme: &Theme) {
         Line::from(""),
         Line::from(Span::styled(
             "Press Enter or Space to continue",
-            Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
         )),
     ]);
 
@@ -134,7 +141,9 @@ pub fn render_onboarding_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "Welcome to Ekphos!",
-            Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.primary)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(Span::styled(
@@ -150,7 +159,9 @@ pub fn render_onboarding_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "Press Enter to confirm",
-            Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
         )),
     ];
 
@@ -174,7 +185,11 @@ pub fn render_create_note_dialog(f: &mut Frame, app: &App) {
     let has_context = app.target_folder.is_some();
     let has_error = app.dialog_error.is_some();
     let base_height = if has_context { 10 } else { 9 };
-    let dialog_height = if has_error { base_height + 2 } else { base_height };
+    let dialog_height = if has_error {
+        base_height + 2
+    } else {
+        base_height
+    };
 
     // Calculate centered dialog area
     let dialog_width = 50.min(area.width.saturating_sub(4));
@@ -227,10 +242,16 @@ pub fn render_create_note_dialog(f: &mut Frame, app: &App) {
     content.push(Line::from(""));
     content.push(Line::from(Span::styled(
         "Enter: Create  |  Esc: Cancel",
-        Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+        Style::default()
+            .fg(theme.muted)
+            .add_modifier(Modifier::ITALIC),
     )));
 
-    let border_color = if has_error { theme.error } else { theme.success };
+    let border_color = if has_error {
+        theme.error
+    } else {
+        theme.success
+    };
 
     let dialog = Paragraph::new(content)
         .block(
@@ -263,7 +284,8 @@ pub fn render_delete_confirm_dialog(f: &mut Frame, app: &App) {
     // Clear the area behind the dialog
     f.render_widget(Clear, dialog_area);
 
-    let note_name = app.current_note()
+    let note_name = app
+        .current_note()
         .map(|n| n.title.as_str())
         .unwrap_or("this note");
 
@@ -271,7 +293,9 @@ pub fn render_delete_confirm_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "Delete note?",
-            Style::default().fg(theme.error).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.error)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(Span::styled(
@@ -281,7 +305,9 @@ pub fn render_delete_confirm_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "y: Yes  |  n: No",
-            Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
         )),
     ];
 
@@ -318,7 +344,9 @@ pub fn render_unsaved_changes_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "You have unsaved changes!",
-            Style::default().fg(theme.warning).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.warning)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(Span::styled(
@@ -328,7 +356,9 @@ pub fn render_unsaved_changes_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "y: Save  |  n: Discard  |  Esc: Cancel",
-            Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
         )),
     ];
 
@@ -367,7 +397,9 @@ pub fn render_create_wiki_note_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             format!("Note '[[{}]]' doesn't exist.", target),
-            Style::default().fg(theme.warning).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.warning)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(Span::styled(
@@ -377,7 +409,9 @@ pub fn render_create_wiki_note_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "y: Create  |  n: Cancel",
-            Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
         )),
     ];
 
@@ -410,14 +444,17 @@ pub fn render_delete_folder_confirm_dialog(f: &mut Frame, app: &App) {
 
     f.render_widget(Clear, dialog_area);
 
-    let folder_name = app.get_selected_folder_name()
+    let folder_name = app
+        .get_selected_folder_name()
         .unwrap_or_else(|| "this folder".to_string());
 
     let content = vec![
         Line::from(""),
         Line::from(Span::styled(
             "Delete folder and all contents?",
-            Style::default().fg(theme.error).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.error)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(Span::styled(
@@ -432,7 +469,9 @@ pub fn render_delete_folder_confirm_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "y: Yes  |  n: No",
-            Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
         )),
     ];
 
@@ -480,7 +519,9 @@ pub fn render_rename_note_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "Enter: Rename  |  Esc: Cancel",
-            Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
         )),
     ];
 
@@ -541,7 +582,9 @@ pub fn render_rename_folder_dialog(f: &mut Frame, app: &App) {
     content.push(Line::from(""));
     content.push(Line::from(Span::styled(
         "Enter: Rename  |  Esc: Cancel",
-        Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+        Style::default()
+            .fg(theme.muted)
+            .add_modifier(Modifier::ITALIC),
     )));
 
     let border_color = if has_error { theme.error } else { theme.info };
@@ -565,7 +608,13 @@ pub fn render_create_folder_dialog(f: &mut Frame, app: &App) {
 
     let has_error = app.dialog_error.is_some();
     let has_context = app.target_folder.is_some();
-    let dialog_height = if has_error { 11 } else if has_context { 10 } else { 9 };
+    let dialog_height = if has_error {
+        11
+    } else if has_context {
+        10
+    } else {
+        9
+    };
 
     let dialog_width = 50.min(area.width.saturating_sub(4));
     let dialog_height = dialog_height.min(area.height.saturating_sub(4));
@@ -614,7 +663,9 @@ pub fn render_create_folder_dialog(f: &mut Frame, app: &App) {
     content.push(Line::from(""));
     content.push(Line::from(Span::styled(
         "Enter: Create  |  Esc: Cancel",
-        Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+        Style::default()
+            .fg(theme.muted)
+            .add_modifier(Modifier::ITALIC),
     )));
 
     let border_color = if has_error { theme.error } else { theme.info };
@@ -651,7 +702,8 @@ pub fn render_create_note_in_folder_dialog(f: &mut Frame, app: &App) {
 
     f.render_widget(Clear, dialog_area);
 
-    let folder_name = app.target_folder
+    let folder_name = app
+        .target_folder
         .as_ref()
         .and_then(|p| p.file_name())
         .map(|n| n.to_string_lossy().to_string())
@@ -686,10 +738,16 @@ pub fn render_create_note_in_folder_dialog(f: &mut Frame, app: &App) {
     content.push(Line::from(""));
     content.push(Line::from(Span::styled(
         "Enter: Create  |  Esc: Cancel (removes folder)",
-        Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+        Style::default()
+            .fg(theme.muted)
+            .add_modifier(Modifier::ITALIC),
     )));
 
-    let border_color = if has_error { theme.error } else { theme.success };
+    let border_color = if has_error {
+        theme.error
+    } else {
+        theme.success
+    };
 
     let dialog = Paragraph::new(content)
         .block(
@@ -724,7 +782,9 @@ pub fn render_empty_directory_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "Oops! This directory seems empty",
-            Style::default().fg(theme.warning).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.warning)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(Span::styled(
@@ -743,7 +803,9 @@ pub fn render_empty_directory_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "Press Enter or Esc to continue",
-            Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
         )),
     ];
 
@@ -795,7 +857,9 @@ pub fn render_help_dialog(f: &mut Frame, app: &mut App) {
 
     let key_style = Style::default().fg(theme.warning);
     let desc_style = Style::default().fg(dialog_theme.text);
-    let header_style = Style::default().fg(dialog_theme.title).add_modifier(Modifier::BOLD);
+    let header_style = Style::default()
+        .fg(dialog_theme.title)
+        .add_modifier(Modifier::BOLD);
     let subheader_style = Style::default().fg(theme.info).add_modifier(Modifier::BOLD);
 
     let left_content = vec![
@@ -928,7 +992,9 @@ pub fn render_help_dialog(f: &mut Frame, app: &mut App) {
         Line::from(""),
         Line::from(Span::styled(
             " Press Esc or ? to close",
-            Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
         )),
     ];
 
@@ -1006,7 +1072,10 @@ pub fn render_help_dialog(f: &mut Frame, app: &mut App) {
             Span::styled("Repeat find / reverse", desc_style),
         ]),
         Line::from(""),
-        Line::from(Span::styled("  Operators (+ motion/text obj)", subheader_style)),
+        Line::from(Span::styled(
+            "  Operators (+ motion/text obj)",
+            subheader_style,
+        )),
         Line::from(vec![
             Span::styled(" d{motion} ", key_style),
             Span::styled("Delete", desc_style),
@@ -1032,7 +1101,10 @@ pub fn render_help_dialog(f: &mut Frame, app: &mut App) {
             Span::styled("Operate to line end", desc_style),
         ]),
         Line::from(""),
-        Line::from(Span::styled("  Text Objects (inner/around)", subheader_style)),
+        Line::from(Span::styled(
+            "  Text Objects (inner/around)",
+            subheader_style,
+        )),
         Line::from(vec![
             Span::styled(" iw/aw     ", key_style),
             Span::styled("Inner/around word", desc_style),
@@ -1232,7 +1304,9 @@ pub fn render_directory_not_found_dialog(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "Directory Not Found",
-            Style::default().fg(theme.error).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.error)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(Span::styled(
@@ -1250,15 +1324,30 @@ pub fn render_directory_not_found_dialog(f: &mut Frame, app: &App) {
         )),
         Line::from(""),
         Line::from(vec![
-            Span::styled("c", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "c",
+                Style::default()
+                    .fg(theme.success)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" Create directory  ", Style::default().fg(theme.foreground)),
-            Span::styled("q", Style::default().fg(theme.error).add_modifier(Modifier::BOLD)),
-            Span::styled(" Quit and fix config", Style::default().fg(theme.foreground)),
+            Span::styled(
+                "q",
+                Style::default()
+                    .fg(theme.error)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " Quit and fix config",
+                Style::default().fg(theme.foreground),
+            ),
         ]),
         Line::from(""),
         Line::from(Span::styled(
-            "Config: ~/.config/ekphos/config.toml",
-            Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC),
+            format!("Config: {}", Config::config_path().display()),
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
         )),
     ];
 

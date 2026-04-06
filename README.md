@@ -6,6 +6,7 @@
 
 An open source, lightweight, fast, terminal-based markdown research tool built with Rust.
 
+Test
 ![Ekphos Preview](examples/ekphos-screenshot.png)
 
 ## Documentation

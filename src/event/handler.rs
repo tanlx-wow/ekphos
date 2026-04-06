@@ -71,12 +71,22 @@ pub fn run_app(
             needs_render = false;
         }
 
+        if let Some(failed_keys) = app.chord_state.check_timeout() {
+            for k in failed_keys {
+                if app.mode == Mode::Edit {
+                    handle_edit_mode(app, k);
+                }
+            }
+            needs_render = true;
+        }
+
         let has_background_work = !app.pending_images.is_empty()
             || app.highlighter_loading
             || app.mouse_button_held
             || app.is_content_search_in_progress()
             || app.indexing_in_progress
-            || app.has_highlight_work();
+            || app.has_highlight_work()
+            || !app.chord_state.pending_keys.is_empty();
 
         if has_background_work {
             // Use very short timeout for highlight work to be reactive
@@ -819,6 +829,32 @@ fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> io::Resul
     if app.buffer_search.active {
         handle_buffer_search_input(app, key);
         return Ok(false);
+    }
+
+    if app.mode == Mode::Edit {
+        let is_insert = app.vim_mode == VimMode::Insert;
+        let mut chord_state = std::mem::take(&mut app.chord_state);
+        let result = chord_state.handle_key(key, is_insert);
+        app.chord_state = chord_state;
+
+        match result {
+            crate::event::chord::ChordResult::Matched(mapped_key) => {
+                handle_edit_mode(app, mapped_key);
+                return Ok(false);
+            }
+            crate::event::chord::ChordResult::Pending => {
+                return Ok(false);
+            }
+            crate::event::chord::ChordResult::Failed(keys) => {
+                for k in keys {
+                    handle_edit_mode(app, k);
+                }
+                return Ok(false);
+            }
+            crate::event::chord::ChordResult::None => {
+                // fall through to normal processing
+            }
+        }
     }
 
     // Handle mode-specific input

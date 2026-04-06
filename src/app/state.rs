@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 
 use image::DynamicImage;
@@ -14,10 +14,10 @@ use ratatui::{
 };
 use ratatui_image::{picker::Picker, protocol::StatefulProtocol};
 
+use crate::config::{Config, Theme};
 use crate::editor::{Editor, Position};
 use crate::highlight::Highlighter;
 use crate::highlight_worker::{HighlightColors, HighlightResult, HighlightWorker};
-use crate::config::{Config, Theme};
 use crate::search::{self, SearchIndex};
 use crate::vim::VimState;
 
@@ -36,7 +36,7 @@ pub struct BlockInsertState {
     pub start_col: usize,
 }
 
-use super::welcome_notes::{GETTING_STARTED_CONTENT, DEMO_NOTE_CONTENT};
+use super::welcome_notes::{DEMO_NOTE_CONTENT, GETTING_STARTED_CONTENT};
 
 fn cache_dir() -> PathBuf {
     dirs::cache_dir()
@@ -105,12 +105,12 @@ pub enum DialogState {
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum SortMode {
     #[default]
-    NameAsc,       
-    NameDesc,       
-    ModifiedOldest, 
-    ModifiedNewest, 
-    CreatedOldest,  
-    CreatedNewest,  
+    NameAsc,
+    NameDesc,
+    ModifiedOldest,
+    ModifiedNewest,
+    CreatedOldest,
+    CreatedNewest,
 }
 
 impl SortMode {
@@ -180,7 +180,7 @@ pub struct GraphNode {
     pub title: String,
     pub x: f32,
     pub y: f32,
-    pub home_x: f32,  // Original position for snap-back
+    pub home_x: f32, // Original position for snap-back
     pub home_y: f32,
     pub vx: f32,
     pub vy: f32,
@@ -218,12 +218,31 @@ pub enum ContentItem {
     Image(String),
     CodeLine(String),
     CodeFence(String),
-    TaskItem { text: String, checked: bool, line_index: usize },
-    TableRow { cells: Vec<String>, is_separator: bool, is_header: bool, column_widths: Vec<usize> },
-    Details { summary: String, content_lines: Vec<String>, id: usize },
-    FrontmatterLine { key: String, value: String },
+    TaskItem {
+        text: String,
+        checked: bool,
+        line_index: usize,
+    },
+    TableRow {
+        cells: Vec<String>,
+        is_separator: bool,
+        is_header: bool,
+        column_widths: Vec<usize>,
+    },
+    Details {
+        summary: String,
+        content_lines: Vec<String>,
+        id: usize,
+    },
+    FrontmatterLine {
+        key: String,
+        value: String,
+    },
     FrontmatterDelimiter,
-    TagBadges { tags: Vec<String>, date: Option<String> },
+    TagBadges {
+        tags: Vec<String>,
+        date: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -241,7 +260,11 @@ pub enum VimMode {
 pub enum ContextMenuState {
     #[default]
     None,
-    Open { x: u16, y: u16, selected_index: usize },
+    Open {
+        x: u16,
+        y: u16,
+        selected_index: usize,
+    },
 }
 
 /// Context menu items
@@ -273,13 +296,12 @@ impl ContextMenuItem {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum WikiAutocompleteMode {
     #[default]
-    Note,    
-    Heading,  
-    Alias,   
+    Note,
+    Heading,
+    Alias,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -425,8 +447,8 @@ pub struct WikiSuggestion {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct WikiLinkInfo {
-    pub target: String,           // The file path (without heading)
-    pub heading: Option<String>,  // Optional #heading part
+    pub target: String,               // The file path (without heading)
+    pub heading: Option<String>,      // Optional #heading part
     pub display_text: Option<String>, // Optional |alias part
     pub start_col: usize,
     pub end_col: usize,
@@ -549,7 +571,7 @@ pub struct App {
     pub content_item_rects: Vec<(usize, Rect)>,
     pub selected_link_index: usize,
     pub details_open_states: HashMap<usize, bool>,
-    pub heading_fold_states: HashMap<usize, bool>,  // content_item index -> is_folded
+    pub heading_fold_states: HashMap<usize, bool>, // content_item index -> is_folded
     pub highlighter: Option<Highlighter>,
     pub highlighter_loading: bool,
     pub highlighter_sender: Sender<Highlighter>,
@@ -568,8 +590,8 @@ pub struct App {
     pub pending_wiki_target: Option<String>,
     pub needs_full_clear: bool,
     pub pending_g: bool,
-    pub pending_z: bool,  // For z-prefixed commands like zM, zR
-    pub status_message: Option<String>,  // Status message shown next to path
+    pub pending_z: bool,                // For z-prefixed commands like zM, zR
+    pub status_message: Option<String>, // Status message shown next to path
     pub buffer_search: BufferSearchState,
     pub help_scroll: usize,
     // Graph view state
@@ -608,6 +630,7 @@ pub struct App {
     pub highlight_version: u64,
     /// Whether there's a pending highlight request waiting for results
     pub highlight_pending: bool,
+    pub chord_state: crate::event::chord::ChordState,
 }
 
 #[allow(dead_code)]
@@ -655,11 +678,7 @@ impl App {
         );
         // No line highlighting in normal mode - only word highlighting via selection
         editor.set_cursor_line_style(Style::default());
-        editor.set_selection_style(
-            Style::default()
-                .fg(theme.foreground)
-                .bg(theme.selection)
-        );
+        editor.set_selection_style(Style::default().fg(theme.foreground).bg(theme.selection));
 
         // Initialize image picker for terminal graphics
         let picker = Picker::from_query_stdio().ok();
@@ -707,7 +726,10 @@ impl App {
             pending_images: HashSet::new(),
             image_sender,
             image_receiver,
-            show_welcome: !is_first_launch && config.welcome_shown && notes_dir_exists && !notes_dir_empty,
+            show_welcome: !is_first_launch
+                && config.welcome_shown
+                && notes_dir_exists
+                && !notes_dir_empty,
             outline: Vec::new(),
             outline_state: ListState::default(),
             vim_mode: VimMode::Normal,
@@ -792,6 +814,7 @@ impl App {
             highlight_worker: Some(HighlightWorker::new()),
             highlight_version: 0,
             highlight_pending: false,
+            chord_state: crate::event::chord::ChordState::default(),
         };
 
         if !is_first_launch && notes_dir_exists {
@@ -817,7 +840,8 @@ impl App {
         let (notes_dir, target_file) = if initial_path.is_dir() {
             (initial_path, None)
         } else if initial_path.is_file() {
-            let parent = initial_path.parent()
+            let parent = initial_path
+                .parent()
                 .map(|p| p.to_path_buf())
                 .unwrap_or_else(|| initial_path.clone());
             (parent, Some(initial_path))
@@ -846,11 +870,7 @@ impl App {
                 .title(" NORMAL | Ctrl+S: Save, Esc: Exit "),
         );
         editor.set_cursor_line_style(Style::default());
-        editor.set_selection_style(
-            Style::default()
-                .fg(theme.foreground)
-                .bg(theme.selection)
-        );
+        editor.set_selection_style(Style::default().fg(theme.foreground).bg(theme.selection));
 
         let picker = Picker::from_query_stdio().ok();
 
@@ -977,6 +997,7 @@ impl App {
             highlight_worker: Some(HighlightWorker::new()),
             highlight_version: 0,
             highlight_pending: false,
+            chord_state: crate::event::chord::ChordState::default(),
         };
 
         if notes_dir_exists {
@@ -995,18 +1016,22 @@ impl App {
     /// Select a note by its file path
     pub fn select_note_by_path(&mut self, target_path: &PathBuf) {
         // Find the matching note first to avoid borrow conflicts
-        let found = self.sidebar_items.iter().enumerate().find_map(|(idx, item)| {
-            if let SidebarItemKind::Note { note_index } = &item.kind {
-                if let Some(note) = self.notes.get(*note_index) {
-                    if let Some(ref path) = note.file_path {
-                        if path == target_path {
-                            return Some((idx, *note_index));
+        let found = self
+            .sidebar_items
+            .iter()
+            .enumerate()
+            .find_map(|(idx, item)| {
+                if let SidebarItemKind::Note { note_index } = &item.kind {
+                    if let Some(note) = self.notes.get(*note_index) {
+                        if let Some(ref path) = note.file_path {
+                            if path == target_path {
+                                return Some((idx, *note_index));
+                            }
                         }
                     }
                 }
-            }
-            None
-        });
+                None
+            });
 
         if let Some((sidebar_idx, note_idx)) = found {
             // Clear search when switching notes
@@ -1031,7 +1056,9 @@ impl App {
         if let Some(path) = current_note_path {
             for (idx, item) in self.sidebar_items.iter().enumerate() {
                 if let SidebarItemKind::Note { note_index } = &item.kind {
-                    if self.notes.get(*note_index)
+                    if self
+                        .notes
+                        .get(*note_index)
                         .and_then(|n| n.file_path.as_ref())
                         .map(|p| p == &path)
                         .unwrap_or(false)
@@ -1067,9 +1094,14 @@ impl App {
 
         self.editor.set_line_wrap(self.config.editor.line_wrap);
         self.editor.set_tab_width(self.config.editor.tab_width);
-        self.editor.set_padding(self.config.editor.left_padding, self.config.editor.right_padding);
-        self.editor.set_line_number_mode(self.config.editor.line_numbers);
-        self.editor.set_scrolloff(self.config.editor.scrolloff as usize);
+        self.editor.set_padding(
+            self.config.editor.left_padding,
+            self.config.editor.right_padding,
+        );
+        self.editor
+            .set_line_number_mode(self.config.editor.line_numbers);
+        self.editor
+            .set_scrolloff(self.config.editor.scrolloff as usize);
         self.editor.set_block(
             Block::default()
                 .borders(Borders::ALL)
@@ -1079,7 +1111,7 @@ impl App {
         self.editor.set_selection_style(
             Style::default()
                 .fg(self.theme.foreground)
-                .bg(self.theme.selection)
+                .bg(self.theme.selection),
         );
 
         self.highlighter = None;
@@ -1097,7 +1129,8 @@ impl App {
             for entry in entries.flatten() {
                 let entry_path = entry.path();
                 if entry_path.is_dir() {
-                    if entry_path.file_name()
+                    if entry_path
+                        .file_name()
                         .map(|n| n.to_string_lossy().starts_with('.'))
                         .unwrap_or(false)
                     {
@@ -1147,7 +1180,8 @@ impl App {
                 let path = entry.path();
 
                 if path.is_dir() {
-                    if path.file_name()
+                    if path
+                        .file_name()
                         .map(|n| n.to_string_lossy().starts_with('.'))
                         .unwrap_or(false)
                     {
@@ -1157,14 +1191,12 @@ impl App {
                     let children = self.build_tree(&path, depth + 1);
 
                     if self.config.show_empty_dir || Self::tree_has_notes(&children) {
-                        let name = path.file_name()
+                        let name = path
+                            .file_name()
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_default();
 
-                        let expanded = self.folder_states
-                            .get(&path)
-                            .copied()
-                            .unwrap_or(false);
+                        let expanded = self.folder_states.get(&path).copied().unwrap_or(false);
 
                         items.push(FileTreeItem::Folder {
                             name,
@@ -1176,7 +1208,8 @@ impl App {
                     }
                 } else if path.extension().map(|e| e == "md").unwrap_or(false) {
                     if let Ok(content) = fs::read_to_string(&path) {
-                        let title = path.file_stem()
+                        let title = path
+                            .file_stem()
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_default();
 
@@ -1185,7 +1218,8 @@ impl App {
                             .unwrap_or((None, None));
 
                         // Parse frontmatter
-                        let (frontmatter, content_start_line) = super::frontmatter::Frontmatter::parse(&content);
+                        let (frontmatter, content_start_line) =
+                            super::frontmatter::Frontmatter::parse(&content);
 
                         let note_index = self.notes.len();
                         self.notes.push(Note {
@@ -1198,10 +1232,7 @@ impl App {
                             content_start_line,
                         });
 
-                        items.push(FileTreeItem::Note {
-                            note_index,
-                            depth,
-                        });
+                        items.push(FileTreeItem::Note { note_index, depth });
                     }
                 }
             }
@@ -1223,7 +1254,12 @@ impl App {
         Self::sort_tree_items(&mut self.file_tree, &self.notes, sort_mode, folders_first);
     }
 
-    fn sort_tree_items(items: &mut [FileTreeItem], notes: &[Note], sort_mode: SortMode, folders_first: bool) {
+    fn sort_tree_items(
+        items: &mut [FileTreeItem],
+        notes: &[Note],
+        sort_mode: SortMode,
+        folders_first: bool,
+    ) {
         items.sort_by(|a, b| {
             if folders_first {
                 let is_folder_a = matches!(a, FileTreeItem::Folder { .. });
@@ -1245,7 +1281,12 @@ impl App {
         }
     }
 
-    fn compare_items(a: &FileTreeItem, b: &FileTreeItem, notes: &[Note], sort_mode: SortMode) -> std::cmp::Ordering {
+    fn compare_items(
+        a: &FileTreeItem,
+        b: &FileTreeItem,
+        notes: &[Note],
+        sort_mode: SortMode,
+    ) -> std::cmp::Ordering {
         match sort_mode {
             SortMode::NameAsc => {
                 let name_a = Self::get_tree_item_name(a, notes);
@@ -1287,7 +1328,10 @@ impl App {
         }
     }
 
-    fn get_tree_item_modified(item: &FileTreeItem, notes: &[Note]) -> Option<std::time::SystemTime> {
+    fn get_tree_item_modified(
+        item: &FileTreeItem,
+        notes: &[Note],
+    ) -> Option<std::time::SystemTime> {
         match item {
             FileTreeItem::Folder { path, .. } => {
                 fs::metadata(path).ok().and_then(|m| m.modified().ok())
@@ -1321,10 +1365,7 @@ impl App {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Notes".to_string());
 
-        let root_expanded = self.folder_states
-            .get(&notes_path)
-            .copied()
-            .unwrap_or(true); // Root expanded by default
+        let root_expanded = self.folder_states.get(&notes_path).copied().unwrap_or(true); // Root expanded by default
 
         self.sidebar_items.push(SidebarItem {
             kind: SidebarItemKind::Folder {
@@ -1345,7 +1386,13 @@ impl App {
     fn flatten_tree_into_sidebar(&mut self, items: &[FileTreeItem], depth_offset: usize) {
         for item in items {
             match item {
-                FileTreeItem::Folder { name, path, expanded, children, depth } => {
+                FileTreeItem::Folder {
+                    name,
+                    path,
+                    expanded,
+                    children,
+                    depth,
+                } => {
                     self.sidebar_items.push(SidebarItem {
                         kind: SidebarItemKind::Folder {
                             path: path.clone(),
@@ -1373,7 +1420,8 @@ impl App {
     }
 
     pub fn sync_selected_note_from_sidebar(&mut self) {
-        let note_index = self.sidebar_items
+        let note_index = self
+            .sidebar_items
             .get(self.selected_sidebar_index)
             .and_then(|item| {
                 if let SidebarItemKind::Note { note_index } = &item.kind {
@@ -1410,7 +1458,9 @@ impl App {
             return;
         }
 
-        let parent_path = self.target_folder.clone()
+        let parent_path = self
+            .target_folder
+            .clone()
             .unwrap_or_else(|| self.config.notes_path());
         let file_path = parent_path.join(format!("{}.md", name));
 
@@ -1452,7 +1502,9 @@ impl App {
             return false;
         }
 
-        let parent_path = self.target_folder.clone()
+        let parent_path = self
+            .target_folder
+            .clone()
             .unwrap_or_else(|| self.config.notes_path());
         let folder_path = parent_path.join(name);
 
@@ -1603,7 +1655,8 @@ impl App {
         }
 
         if let Some(old_path) = self.get_selected_folder_path() {
-            let old_name = old_path.file_name()
+            let old_name = old_path
+                .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
@@ -1716,7 +1769,12 @@ impl App {
         }
         self.config.notes_path()
     }
-    fn move_note(&mut self, source: &std::path::Path, dest_folder: &std::path::Path, title: &str) -> Result<(), String> {
+    fn move_note(
+        &mut self,
+        source: &std::path::Path,
+        dest_folder: &std::path::Path,
+        title: &str,
+    ) -> Result<(), String> {
         if !source.exists() {
             return Err("Source file no longer exists".to_string());
         }
@@ -1733,8 +1791,7 @@ impl App {
         let notes_root = self.config.notes_path();
         let old_wiki_path = Self::calculate_wiki_path(source, &notes_root);
         let new_wiki_path = Self::calculate_wiki_path(&dest_path, &notes_root);
-        fs::rename(source, &dest_path)
-            .map_err(|e| format!("Failed to move file: {}", e))?;
+        fs::rename(source, &dest_path).map_err(|e| format!("Failed to move file: {}", e))?;
         self.update_wiki_links_after_move(&old_wiki_path, &new_wiki_path, title);
         self.load_notes_from_dir();
         self.start_index_build();
@@ -1755,7 +1812,12 @@ impl App {
 
         Ok(())
     }
-    fn move_folder(&mut self, source: &std::path::Path, dest_folder: &std::path::Path, name: &str) -> Result<(), String> {
+    fn move_folder(
+        &mut self,
+        source: &std::path::Path,
+        dest_folder: &std::path::Path,
+        name: &str,
+    ) -> Result<(), String> {
         if !source.exists() {
             return Err("Source folder no longer exists".to_string());
         }
@@ -1781,7 +1843,9 @@ impl App {
                 if file_path.starts_with(source) {
                     let old_wiki = Self::calculate_wiki_path(file_path, &notes_root);
                     // Calculate new path by replacing source prefix with dest
-                    let relative = file_path.strip_prefix(source).unwrap_or(file_path.as_path());
+                    let relative = file_path
+                        .strip_prefix(source)
+                        .unwrap_or(file_path.as_path());
                     let new_file_path = dest_path.join(relative);
                     let new_wiki = Self::calculate_wiki_path(&new_file_path, &notes_root);
                     old_new_paths.push((old_wiki, new_wiki, note.title.clone()));
@@ -1789,10 +1853,11 @@ impl App {
             }
         }
 
-        fs::rename(source, &dest_path)
-            .map_err(|e| format!("Failed to move folder: {}", e))?;
+        fs::rename(source, &dest_path).map_err(|e| format!("Failed to move folder: {}", e))?;
 
-        let keys_to_update: Vec<PathBuf> = self.folder_states.keys()
+        let keys_to_update: Vec<PathBuf> = self
+            .folder_states
+            .keys()
             .filter(|k| k.starts_with(source))
             .cloned()
             .collect();
@@ -1837,12 +1902,8 @@ impl App {
                 Err(_) => continue,
             };
 
-            let modified_content = self.replace_wiki_links_in_content(
-                &content,
-                old_path,
-                new_path,
-                title,
-            );
+            let modified_content =
+                self.replace_wiki_links_in_content(&content, old_path, new_path, title);
 
             if modified_content != content {
                 let _ = fs::write(&file_path, modified_content);
@@ -1893,8 +1954,8 @@ impl App {
                 let old_path_lower = old_path.to_lowercase();
                 let old_title_lower = old_title.to_lowercase();
 
-                let should_replace = target_lower == old_path_lower
-                    || target_lower == old_title_lower;
+                let should_replace =
+                    target_lower == old_path_lower || target_lower == old_title_lower;
 
                 if should_replace {
                     let new_target = if new_path.contains('/') {
@@ -1931,7 +1992,8 @@ impl App {
             }
             path_str.to_string()
         } else {
-            file_path.file_stem()
+            file_path
+                .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default()
         }
@@ -1945,7 +2007,10 @@ impl App {
         let notes_path = self.config.notes_path();
         let _ = fs::create_dir_all(&notes_path);
 
-        let _ = fs::write(notes_path.join("01-Getting Started.md"), GETTING_STARTED_CONTENT);
+        let _ = fs::write(
+            notes_path.join("01-Getting Started.md"),
+            GETTING_STARTED_CONTENT,
+        );
         let _ = fs::write(notes_path.join("02-Demo Note.md"), DEMO_NOTE_CONTENT);
         self.dialog = DialogState::None;
         self.load_notes_from_dir();
@@ -2012,7 +2077,11 @@ impl App {
 
         // Get note data to extract frontmatter info
         let note_data = self.current_note().map(|n| {
-            (n.content.clone(), n.frontmatter.clone(), n.content_start_line)
+            (
+                n.content.clone(),
+                n.frontmatter.clone(),
+                n.content_start_line,
+            )
         });
 
         if let Some((content, frontmatter, content_start_line)) = note_data {
@@ -2033,10 +2102,8 @@ impl App {
                         if let Some(colon_pos) = line.find(':') {
                             let key = line[..colon_pos].trim().to_string();
                             let value = line[colon_pos + 1..].trim().to_string();
-                            self.content_items.push(ContentItem::FrontmatterLine {
-                                key,
-                                value,
-                            });
+                            self.content_items
+                                .push(ContentItem::FrontmatterLine { key, value });
                         } else {
                             self.content_items.push(ContentItem::FrontmatterLine {
                                 key: String::new(),
@@ -2086,7 +2153,8 @@ impl App {
 
                 // If inside code block, add as CodeLine
                 if in_code_block {
-                    self.content_items.push(ContentItem::CodeLine(line.to_string()));
+                    self.content_items
+                        .push(ContentItem::CodeLine(line.to_string()));
                     self.content_item_source_lines.push(line_index);
                     i += 1;
                     continue;
@@ -2098,7 +2166,8 @@ impl App {
                         if let Some(end) = line[start..].find(')') {
                             let path = &line[start + 2..start + end];
                             if !path.is_empty() {
-                                self.content_items.push(ContentItem::Image(path.to_string()));
+                                self.content_items
+                                    .push(ContentItem::Image(path.to_string()));
                                 self.content_item_source_lines.push(line_index);
                                 i += 1;
                                 continue;
@@ -2108,17 +2177,26 @@ impl App {
                 }
 
                 let trimmed = line.trim_start();
-                if trimmed.starts_with("- [ ] ") || trimmed.starts_with("- [x] ") || trimmed.starts_with("- [X] ") {
+                if trimmed.starts_with("- [ ] ")
+                    || trimmed.starts_with("- [x] ")
+                    || trimmed.starts_with("- [X] ")
+                {
                     let checked = trimmed.starts_with("- [x] ") || trimmed.starts_with("- [X] ");
                     let text = trimmed[6..].to_string();
-                    self.content_items.push(ContentItem::TaskItem { text, checked, line_index });
+                    self.content_items.push(ContentItem::TaskItem {
+                        text,
+                        checked,
+                        line_index,
+                    });
                     self.content_item_source_lines.push(line_index);
                     i += 1;
                     continue;
                 }
 
                 let trimmed_line = line.trim();
-                if trimmed_line.starts_with("<details") && (trimmed_line.ends_with(">") || trimmed_line.contains("><")) {
+                if trimmed_line.starts_with("<details")
+                    && (trimmed_line.ends_with(">") || trimmed_line.contains("><"))
+                {
                     let details_start_line = line_index;
                     let mut summary = String::new();
                     let mut content_lines: Vec<String> = Vec::new();
@@ -2169,7 +2247,8 @@ impl App {
                         self.content_item_source_lines.push(details_start_line);
                         continue;
                     } else {
-                        self.content_items.push(ContentItem::TextLine(line.to_string()));
+                        self.content_items
+                            .push(ContentItem::TextLine(line.to_string()));
                         self.content_item_source_lines.push(line_index);
                         continue;
                     }
@@ -2182,8 +2261,9 @@ impl App {
                     while i < lines.len() {
                         let tline = lines[i].trim();
                         if tline.starts_with('|') && tline.ends_with('|') {
-                            let inner = &tline[1..tline.len()-1];
-                            let cells: Vec<String> = inner.split('|').map(|s| s.trim().to_string()).collect();
+                            let inner = &tline[1..tline.len() - 1];
+                            let cells: Vec<String> =
+                                inner.split('|').map(|s| s.trim().to_string()).collect();
                             let is_separator = cells.iter().all(|cell| {
                                 let c = cell.trim();
                                 !c.is_empty() && c.chars().all(|ch| ch == '-' || ch == ':')
@@ -2195,14 +2275,19 @@ impl App {
                         }
                     }
 
-                    let num_cols = table_rows.iter().map(|(cells, _)| cells.len()).max().unwrap_or(0);
+                    let num_cols = table_rows
+                        .iter()
+                        .map(|(cells, _)| cells.len())
+                        .max()
+                        .unwrap_or(0);
                     let mut column_widths: Vec<usize> = vec![0; num_cols];
 
                     for (cells, is_sep) in &table_rows {
                         if !is_sep {
                             for (col_idx, cell) in cells.iter().enumerate() {
                                 if col_idx < column_widths.len() {
-                                    column_widths[col_idx] = column_widths[col_idx].max(cell.chars().count());
+                                    column_widths[col_idx] =
+                                        column_widths[col_idx].max(cell.chars().count());
                                 }
                             }
                         }
@@ -2215,19 +2300,23 @@ impl App {
                     let separator_idx = table_rows.iter().position(|(_, is_sep)| *is_sep);
 
                     for (row_idx, (cells, is_separator)) in table_rows.into_iter().enumerate() {
-                        let is_header = separator_idx.map(|sep_idx| row_idx < sep_idx).unwrap_or(false);
+                        let is_header = separator_idx
+                            .map(|sep_idx| row_idx < sep_idx)
+                            .unwrap_or(false);
                         self.content_items.push(ContentItem::TableRow {
                             cells,
                             is_separator,
                             is_header,
                             column_widths: column_widths.clone(),
                         });
-                        self.content_item_source_lines.push(table_start_line + row_idx);
+                        self.content_item_source_lines
+                            .push(table_start_line + row_idx);
                     }
                     continue;
                 }
 
-                self.content_items.push(ContentItem::TextLine(line.to_string()));
+                self.content_items
+                    .push(ContentItem::TextLine(line.to_string()));
                 self.content_item_source_lines.push(line_index);
                 i += 1;
             }
@@ -2269,7 +2358,9 @@ impl App {
     pub fn goto_first_content_line(&mut self) {
         // Find first visible item
         self.content_cursor = 0;
-        while self.content_cursor < self.content_items.len() && !self.is_content_item_visible(self.content_cursor) {
+        while self.content_cursor < self.content_items.len()
+            && !self.is_content_item_visible(self.content_cursor)
+        {
             self.content_cursor += 1;
         }
         self.selected_link_index = 0;
@@ -2370,7 +2461,12 @@ impl App {
         let saved_cursor = self.content_cursor;
 
         if let Some(item) = self.content_items.get(self.content_cursor) {
-            if let ContentItem::TaskItem { line_index, checked, .. } = item {
+            if let ContentItem::TaskItem {
+                line_index,
+                checked,
+                ..
+            } = item
+            {
                 let line_index = *line_index;
                 let new_checked = !*checked;
 
@@ -2385,7 +2481,8 @@ impl App {
                                 .replacen("- [X]", "- [ ]", 1)
                         };
 
-                        let mut new_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
+                        let mut new_lines: Vec<String> =
+                            lines.iter().map(|s| s.to_string()).collect();
                         new_lines[line_index] = new_line;
                         note.content = new_lines.join("\n");
 
@@ -2451,11 +2548,12 @@ impl App {
         }
     }
     pub fn get_heading_children_range(&self, heading_idx: usize) -> std::ops::Range<usize> {
-        let heading_level = if let Some(ContentItem::TextLine(line)) = self.content_items.get(heading_idx) {
-            Self::heading_level(line).unwrap_or(0)
-        } else {
-            return heading_idx..heading_idx;
-        };
+        let heading_level =
+            if let Some(ContentItem::TextLine(line)) = self.content_items.get(heading_idx) {
+                Self::heading_level(line).unwrap_or(0)
+            } else {
+                return heading_idx..heading_idx;
+            };
 
         let mut end_idx = heading_idx + 1;
         while end_idx < self.content_items.len() {
@@ -2582,11 +2680,12 @@ impl App {
 
         let idx = if self.is_current_task_item() {
             if self.selected_link_index == 0 {
-                return None; 
+                return None;
             }
             (self.selected_link_index - 1).min(all_links.len().saturating_sub(1))
         } else {
-            self.selected_link_index.min(all_links.len().saturating_sub(1))
+            self.selected_link_index
+                .min(all_links.len().saturating_sub(1))
         };
 
         all_links.get(idx).cloned()
@@ -2600,7 +2699,6 @@ impl App {
             link_count
         }
     }
-
 
     pub fn next_link(&mut self) {
         let link_count = self.current_line_link_count();
@@ -2629,7 +2727,9 @@ impl App {
     }
 
     pub fn item_link_at(&self, index: usize) -> Option<String> {
-        self.item_links_at(index).first().map(|(_, url, _, _)| url.clone())
+        self.item_links_at(index)
+            .first()
+            .map(|(_, url, _, _)| url.clone())
     }
 
     /// Check if the current line has any links or wikilinks
@@ -2698,7 +2798,8 @@ impl App {
             // check for single-bang image
             if let Some(img_pos) = remaining.find("![") {
                 // skip if this is actually a double-bang
-                if img_pos > 0 && remaining.as_bytes().get(img_pos.saturating_sub(1)) == Some(&b'!') {
+                if img_pos > 0 && remaining.as_bytes().get(img_pos.saturating_sub(1)) == Some(&b'!')
+                {
                     search_start = search_start + img_pos + 2;
                     continue;
                 }
@@ -2827,9 +2928,9 @@ impl App {
 
                         if i + full_link_len <= target_pos {
                             let display_len = if alt_text.is_empty() {
-                                6 + url.chars().count() + 1 
+                                6 + url.chars().count() + 1
                             } else {
-                                6 + alt_text.chars().count() + 1 
+                                6 + alt_text.chars().count() + 1
                             };
                             rendered_pos += display_len;
                             i += full_link_len;
@@ -2907,7 +3008,12 @@ impl App {
 
         None
     }
-    pub fn find_clicked_wiki_link(&self, index: usize, col: u16, content_x: u16) -> Option<WikiLinkInfo> {
+    pub fn find_clicked_wiki_link(
+        &self,
+        index: usize,
+        col: u16,
+        content_x: u16,
+    ) -> Option<WikiLinkInfo> {
         let wiki_links = self.item_wiki_links_at(index);
         if wiki_links.is_empty() {
             return None;
@@ -2934,13 +3040,13 @@ impl App {
     fn get_line_prefix_len(&self, index: usize) -> usize {
         match self.content_items.get(index) {
             Some(ContentItem::TextLine(line)) => {
-                let mut len = 2; 
+                let mut len = 2;
                 if line.starts_with("- ") || line.starts_with("* ") {
-                    len += 2; 
+                    len += 2;
                 }
                 len
             }
-            Some(ContentItem::TaskItem { .. }) => 6, 
+            Some(ContentItem::TaskItem { .. }) => 6,
             _ => 2,
         }
     }
@@ -2954,7 +3060,10 @@ impl App {
     }
 
     pub fn item_is_details_at(&self, index: usize) -> bool {
-        matches!(self.content_items.get(index), Some(ContentItem::Details { .. }))
+        matches!(
+            self.content_items.get(index),
+            Some(ContentItem::Details { .. })
+        )
     }
 
     pub fn toggle_details_at(&mut self, index: usize) {
@@ -2966,7 +3075,10 @@ impl App {
     }
 
     pub fn item_is_task_at(&self, index: usize) -> bool {
-        matches!(self.content_items.get(index), Some(ContentItem::TaskItem { .. }))
+        matches!(
+            self.content_items.get(index),
+            Some(ContentItem::TaskItem { .. })
+        )
     }
 
     pub fn is_click_on_task_checkbox(&self, index: usize, col: u16, content_x: u16) -> bool {
@@ -2981,7 +3093,12 @@ impl App {
         let saved_cursor = self.content_cursor;
 
         if let Some(item) = self.content_items.get(index) {
-            if let ContentItem::TaskItem { line_index, checked, .. } = item {
+            if let ContentItem::TaskItem {
+                line_index,
+                checked,
+                ..
+            } = item
+            {
                 let line_index = *line_index;
                 let new_checked = !*checked;
 
@@ -2996,7 +3113,8 @@ impl App {
                                 .replacen("- [X]", "- [ ]", 1)
                         };
 
-                        let mut new_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
+                        let mut new_lines: Vec<String> =
+                            lines.iter().map(|s| s.to_string()).collect();
                         new_lines[line_index] = new_line;
                         note.content = new_lines.join("\n");
 
@@ -3123,7 +3241,7 @@ impl App {
                             }
                             if close_count == count {
                                 found_closing = true;
-                                i = j; 
+                                i = j;
                                 break;
                             }
                         } else {
@@ -3148,18 +3266,24 @@ impl App {
     /// - heading_query: the part after # (if present)
     /// - alias_query: the part after | (if present)
     /// - mode: WikiAutocompleteMode indicating current position
-    pub fn detect_unclosed_wikilink(&self, row: usize, col: usize) -> Option<(String, Option<String>, Option<String>, WikiAutocompleteMode)> {
+    pub fn detect_unclosed_wikilink(
+        &self,
+        row: usize,
+        col: usize,
+    ) -> Option<(String, Option<String>, Option<String>, WikiAutocompleteMode)> {
         let lines = self.editor.lines();
         let line = lines.get(row)?;
         let chars: Vec<char> = line.chars().collect();
         let mut open_pos = None;
         let mut i = col.saturating_sub(1);
         while i > 0 {
-            if i >= 1 && chars.get(i.saturating_sub(1)) == Some(&'[') && chars.get(i) == Some(&'[') {
+            if i >= 1 && chars.get(i.saturating_sub(1)) == Some(&'[') && chars.get(i) == Some(&'[')
+            {
                 open_pos = Some(i.saturating_sub(1));
                 break;
             }
-            if i >= 1 && chars.get(i.saturating_sub(1)) == Some(&']') && chars.get(i) == Some(&']') {
+            if i >= 1 && chars.get(i.saturating_sub(1)) == Some(&']') && chars.get(i) == Some(&']')
+            {
                 return None;
             }
             i = i.saturating_sub(1);
@@ -3174,7 +3298,7 @@ impl App {
 
         if self.is_cursor_in_code(row, start) {
             return None;
-        } 
+        }
 
         for j in start..col.saturating_sub(1) {
             if chars.get(j) == Some(&']') && chars.get(j + 1) == Some(&']') {
@@ -3191,14 +3315,29 @@ impl App {
             if let Some(hash_pos) = before_pipe.find('#') {
                 let note_query = before_pipe[..hash_pos].to_string();
                 let heading_query = before_pipe[hash_pos + 1..].to_string();
-                Some((note_query, Some(heading_query), Some(alias_query), WikiAutocompleteMode::Alias))
+                Some((
+                    note_query,
+                    Some(heading_query),
+                    Some(alias_query),
+                    WikiAutocompleteMode::Alias,
+                ))
             } else {
-                Some((before_pipe.to_string(), None, Some(alias_query), WikiAutocompleteMode::Alias))
+                Some((
+                    before_pipe.to_string(),
+                    None,
+                    Some(alias_query),
+                    WikiAutocompleteMode::Alias,
+                ))
             }
         } else if let Some(hash_pos) = content.find('#') {
             let note_query = content[..hash_pos].to_string();
             let heading_query = content[hash_pos + 1..].to_string();
-            Some((note_query, Some(heading_query), None, WikiAutocompleteMode::Heading))
+            Some((
+                note_query,
+                Some(heading_query),
+                None,
+                WikiAutocompleteMode::Heading,
+            ))
         } else {
             Some((content, None, None, WikiAutocompleteMode::Note))
         }
@@ -3260,18 +3399,28 @@ impl App {
 
                 if let Some(end_pos) = after_brackets.find("]]") {
                     let raw_content = &after_brackets[..end_pos];
-                    if !raw_content.is_empty() && !raw_content.contains('[') && !raw_content.contains(']') {
+                    if !raw_content.is_empty()
+                        && !raw_content.contains('[')
+                        && !raw_content.contains(']')
+                    {
                         // Parse: [[target#heading|display]]
                         // First split by | to get display text (alias)
-                        let (content, display_text) = if let Some(pipe_pos) = raw_content.find('|') {
-                            (&raw_content[..pipe_pos], Some(raw_content[pipe_pos + 1..].to_string()))
+                        let (content, display_text) = if let Some(pipe_pos) = raw_content.find('|')
+                        {
+                            (
+                                &raw_content[..pipe_pos],
+                                Some(raw_content[pipe_pos + 1..].to_string()),
+                            )
                         } else {
                             (raw_content, None)
                         };
 
                         // Then split by # to get heading
                         let (target, heading) = if let Some(hash_pos) = content.find('#') {
-                            (&content[..hash_pos], Some(content[hash_pos + 1..].to_string()))
+                            (
+                                &content[..hash_pos],
+                                Some(content[hash_pos + 1..].to_string()),
+                            )
                         } else {
                             (content, None)
                         };
@@ -3279,7 +3428,9 @@ impl App {
                         let rendered_start = Self::calc_wiki_rendered_pos(text, abs_start);
                         // Display text determines rendered length if present (use unicode width for CJK support)
                         use unicode_width::UnicodeWidthStr;
-                        let display_len = display_text.as_ref().map_or(raw_content.width(), |d| d.width());
+                        let display_len = display_text
+                            .as_ref()
+                            .map_or(raw_content.width(), |d| d.width());
                         let rendered_end = rendered_start + display_len;
                         // Validate against target file (without heading)
                         let is_valid = self.wiki_link_exists(target);
@@ -3305,7 +3456,7 @@ impl App {
     }
 
     fn calc_wiki_rendered_pos(text: &str, target_pos: usize) -> usize {
-        use unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
+        use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
         let mut rendered_pos = 0;
         let mut i = 0;
 
@@ -3400,7 +3551,11 @@ impl App {
             }
 
             // Use unicode widh for individual characters (CJK = 2, ASCII = 1)
-            rendered_pos += remaining.chars().next().map(|c| c.width().unwrap_or(1)).unwrap_or(1);
+            rendered_pos += remaining
+                .chars()
+                .next()
+                .map(|c| c.width().unwrap_or(1))
+                .unwrap_or(1);
             i += remaining.chars().next().map(|c| c.len_utf8()).unwrap_or(1);
         }
 
@@ -3410,14 +3565,20 @@ impl App {
     #[allow(dead_code)]
     pub fn current_wiki_link_target(&self) -> Option<String> {
         let wiki_links = self.item_wiki_links_at(self.content_cursor);
-        wiki_links.get(self.selected_link_index).map(|info| info.target.clone())
+        wiki_links
+            .get(self.selected_link_index)
+            .map(|info| info.target.clone())
     }
 
     pub fn navigate_to_wiki_link(&mut self, target: &str) -> bool {
         self.navigate_to_wiki_link_with_heading(target, None)
     }
 
-    pub fn navigate_to_wiki_link_with_heading(&mut self, target: &str, heading: Option<&str>) -> bool {
+    pub fn navigate_to_wiki_link_with_heading(
+        &mut self,
+        target: &str,
+        heading: Option<&str>,
+    ) -> bool {
         if let Some(note_idx) = self.resolve_wiki_link(target) {
             if let Some(note) = self.notes.get(note_idx) {
                 if let Some(ref file_path) = note.file_path {
@@ -3428,7 +3589,12 @@ impl App {
                         if parent == notes_root {
                             break;
                         }
-                        if !self.folder_states.get(&parent.to_path_buf()).copied().unwrap_or(false) {
+                        if !self
+                            .folder_states
+                            .get(&parent.to_path_buf())
+                            .copied()
+                            .unwrap_or(false)
+                        {
                             self.folder_states.insert(parent.to_path_buf(), true);
                             needs_rebuild = true;
                         }
@@ -3541,7 +3707,11 @@ impl App {
 
         self.navigation_index -= 1;
         if let Some(entry) = self.navigation_history.get(self.navigation_index).cloned() {
-            self.go_to_note_without_history(entry.note_idx, Some(entry.content_cursor), Some(entry.content_scroll_offset));
+            self.go_to_note_without_history(
+                entry.note_idx,
+                Some(entry.content_cursor),
+                Some(entry.content_scroll_offset),
+            );
             return true;
         }
         false
@@ -3559,14 +3729,23 @@ impl App {
 
         self.navigation_index += 1;
         if let Some(entry) = self.navigation_history.get(self.navigation_index).cloned() {
-            self.go_to_note_without_history(entry.note_idx, Some(entry.content_cursor), Some(entry.content_scroll_offset));
+            self.go_to_note_without_history(
+                entry.note_idx,
+                Some(entry.content_cursor),
+                Some(entry.content_scroll_offset),
+            );
             return true;
         }
         false
     }
 
     /// go to a note without pushing to history used by back/forward to prevent infinite loop
-    fn go_to_note_without_history(&mut self, note_idx: usize, cursor: Option<usize>, scroll: Option<usize>) {
+    fn go_to_note_without_history(
+        &mut self,
+        note_idx: usize,
+        cursor: Option<usize>,
+        scroll: Option<usize>,
+    ) {
         if note_idx >= self.notes.len() {
             return;
         }
@@ -3580,7 +3759,12 @@ impl App {
                     if parent == notes_root {
                         break;
                     }
-                    if !self.folder_states.get(&parent.to_path_buf()).copied().unwrap_or(false) {
+                    if !self
+                        .folder_states
+                        .get(&parent.to_path_buf())
+                        .copied()
+                        .unwrap_or(false)
+                    {
                         self.folder_states.insert(parent.to_path_buf(), true);
                         needs_rebuild = true;
                     }
@@ -3622,7 +3806,7 @@ impl App {
     }
 
     pub fn build_graph(&mut self) {
-        use unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
+        use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
         let mut nodes: Vec<GraphNode> = Vec::new();
         let mut edges: Vec<GraphEdge> = Vec::new();
@@ -3667,15 +3851,19 @@ impl App {
 
             for target in wiki_targets {
                 if let Some(target_note_idx) = self.resolve_wiki_link(&target) {
-                    if let (Some(&from_node), Some(&to_node)) =
-                        (note_to_node.get(&note_idx), note_to_node.get(&target_note_idx))
-                    {
-                        let existing = edges.iter_mut().find(|e| e.from == to_node && e.to == from_node);
+                    if let (Some(&from_node), Some(&to_node)) = (
+                        note_to_node.get(&note_idx),
+                        note_to_node.get(&target_note_idx),
+                    ) {
+                        let existing = edges
+                            .iter_mut()
+                            .find(|e| e.from == to_node && e.to == from_node);
 
                         if let Some(edge) = existing {
                             edge.bidirectional = true;
                         } else {
-                            let already_exists = edges.iter().any(|e| e.from == from_node && e.to == to_node);
+                            let already_exists =
+                                edges.iter().any(|e| e.from == from_node && e.to == to_node);
                             if !already_exists {
                                 edges.push(GraphEdge {
                                     from: from_node,
@@ -3697,7 +3885,11 @@ impl App {
             self.graph_view.selected_node = Some(node_idx);
             self.graph_view.needs_center = true;
         } else {
-            self.graph_view.selected_node = if !self.graph_view.nodes.is_empty() { Some(0) } else { None };
+            self.graph_view.selected_node = if !self.graph_view.nodes.is_empty() {
+                Some(0)
+            } else {
+                None
+            };
         }
     }
 
@@ -3725,7 +3917,10 @@ impl App {
         for (idx, note) in self.notes.iter().enumerate() {
             if let Some(wiki_path) = self.get_wiki_path_for_note(idx) {
                 if !folder_prefix.is_empty() {
-                    if !wiki_path.to_lowercase().starts_with(&folder_prefix.to_lowercase()) {
+                    if !wiki_path
+                        .to_lowercase()
+                        .starts_with(&folder_prefix.to_lowercase())
+                    {
                         continue;
                     }
                 }
@@ -3740,7 +3935,9 @@ impl App {
                         display_name: note.title.clone(),
                         insert_text: note.title.clone(),
                         is_folder: false,
-                        path: note.file_path.as_ref()
+                        path: note
+                            .file_path
+                            .as_ref()
                             .map(|p| p.display().to_string())
                             .unwrap_or_default(),
                         score,
@@ -3760,7 +3957,10 @@ impl App {
                     }
 
                     if !folder_prefix.is_empty() {
-                        if !folder_path.to_lowercase().starts_with(&folder_prefix.to_lowercase().trim_end_matches('/')) {
+                        if !folder_path
+                            .to_lowercase()
+                            .starts_with(&folder_prefix.to_lowercase().trim_end_matches('/'))
+                        {
                             continue;
                         }
                     }
@@ -3779,13 +3979,14 @@ impl App {
             }
         }
 
-        suggestions.sort_by(|a, b| {
-            match (a.is_folder, b.is_folder) {
-                (false, true) => std::cmp::Ordering::Less,
-                (true, false) => std::cmp::Ordering::Greater,
-                _ => b.score.cmp(&a.score)
-                    .then_with(|| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase())),
-            }
+        suggestions.sort_by(|a, b| match (a.is_folder, b.is_folder) {
+            (false, true) => std::cmp::Ordering::Less,
+            (true, false) => std::cmp::Ordering::Greater,
+            _ => b.score.cmp(&a.score).then_with(|| {
+                a.display_name
+                    .to_lowercase()
+                    .cmp(&b.display_name.to_lowercase())
+            }),
         });
 
         suggestions
@@ -3799,7 +4000,8 @@ impl App {
         for (idx, note) in self.notes.iter().enumerate() {
             if let Some(wiki_path) = self.get_wiki_path_for_note(idx) {
                 if wiki_path.to_lowercase() == note_target.to_lowercase()
-                   || note.title.to_lowercase() == note_target.to_lowercase() {
+                    || note.title.to_lowercase() == note_target.to_lowercase()
+                {
                     for line in note.content.lines() {
                         let heading: Option<(usize, String)> = if line.starts_with("### ") {
                             Some((3, line.trim_start_matches("### ").to_string()))
@@ -3813,11 +4015,11 @@ impl App {
 
                         if let Some((level, title)) = heading {
                             let score = if query.is_empty() {
-                                1000 
+                                1000
                             } else if let Some(s) = fuzzy_match(&title, query) {
                                 s
                             } else {
-                                continue; 
+                                continue;
                             };
 
                             let prefix = "  ".repeat(level.saturating_sub(1));
@@ -3831,7 +4033,7 @@ impl App {
                             });
                         }
                     }
-                    break; 
+                    break;
                 }
             }
         }
@@ -3891,7 +4093,9 @@ impl App {
         #[cfg(target_os = "linux")]
         let _ = Command::new("xdg-open").arg(&open_path).spawn();
         #[cfg(target_os = "windows")]
-        let _ = Command::new("cmd").args(["/c", "start", "", &open_path]).spawn();
+        let _ = Command::new("cmd")
+            .args(["/c", "start", "", &open_path])
+            .spawn();
     }
 
     pub fn next_sidebar_item(&mut self) {
@@ -3939,12 +4143,13 @@ impl App {
     }
 
     pub fn handle_sidebar_enter(&mut self) {
-        let item_info = self.sidebar_items.get(self.selected_sidebar_index).map(|item| {
-            match &item.kind {
+        let item_info = self
+            .sidebar_items
+            .get(self.selected_sidebar_index)
+            .map(|item| match &item.kind {
                 SidebarItemKind::Folder { path, .. } => (true, path.clone(), 0),
                 SidebarItemKind::Note { note_index } => (false, PathBuf::new(), *note_index),
-            }
-        });
+            });
 
         if let Some((is_folder, path, note_index)) = item_info {
             if is_folder {
@@ -3973,7 +4178,13 @@ impl App {
 
     fn update_folder_in_tree(items: &mut [FileTreeItem], target_path: &PathBuf, new_state: bool) {
         for item in items {
-            if let FileTreeItem::Folder { path, expanded, children, .. } = item {
+            if let FileTreeItem::Folder {
+                path,
+                expanded,
+                children,
+                ..
+            } = item
+            {
                 if path == target_path {
                     *expanded = new_state;
                     return;
@@ -3985,9 +4196,27 @@ impl App {
 
     pub fn toggle_focus(&mut self, backwards: bool) {
         self.focus = match self.focus {
-            Focus::Sidebar => if backwards { Focus::Outline } else { Focus::Content },
-            Focus::Content => if backwards { Focus::Sidebar } else { Focus::Outline },
-            Focus::Outline => if backwards {Focus::Content} else {Focus::Sidebar},
+            Focus::Sidebar => {
+                if backwards {
+                    Focus::Outline
+                } else {
+                    Focus::Content
+                }
+            }
+            Focus::Content => {
+                if backwards {
+                    Focus::Sidebar
+                } else {
+                    Focus::Outline
+                }
+            }
+            Focus::Outline => {
+                if backwards {
+                    Focus::Content
+                } else {
+                    Focus::Sidebar
+                }
+            }
         };
     }
 
@@ -4020,7 +4249,8 @@ impl App {
 
         let query = self.search_query.to_lowercase();
 
-        self.search_matched_notes = self.notes
+        self.search_matched_notes = self
+            .notes
             .iter()
             .enumerate()
             .filter(|(_, note)| note.title.to_lowercase().contains(&query))
@@ -4047,7 +4277,8 @@ impl App {
 
         self.rebuild_sidebar_items();
 
-        self.filtered_indices = self.sidebar_items
+        self.filtered_indices = self
+            .sidebar_items
             .iter()
             .enumerate()
             .filter(|(_, item)| {
@@ -4068,9 +4299,18 @@ impl App {
         }
     }
 
-    fn update_tree_expanded_states(items: &mut [FileTreeItem], folder_states: &HashMap<PathBuf, bool>) {
+    fn update_tree_expanded_states(
+        items: &mut [FileTreeItem],
+        folder_states: &HashMap<PathBuf, bool>,
+    ) {
         for item in items {
-            if let FileTreeItem::Folder { path, expanded, children, .. } = item {
+            if let FileTreeItem::Folder {
+                path,
+                expanded,
+                children,
+                ..
+            } = item
+            {
                 if let Some(&state) = folder_states.get(path) {
                     *expanded = state;
                 }
@@ -4097,7 +4337,8 @@ impl App {
             self.rebuild_sidebar_items();
         }
         if let Some(saved_index) = self.pre_search_sidebar_index.take() {
-            self.selected_sidebar_index = saved_index.min(self.sidebar_items.len().saturating_sub(1));
+            self.selected_sidebar_index =
+                saved_index.min(self.sidebar_items.len().saturating_sub(1));
         }
     }
 
@@ -4172,7 +4413,7 @@ impl App {
                         start_col: col,
                         end_col: col + query_len,
                     });
-                    col += 1; 
+                    col += 1;
                 } else {
                     col += 1;
                 }
@@ -4361,7 +4602,8 @@ impl App {
             let line_count = lines.len();
             let content_start_line = note.content_start_line;
 
-            let target_row = self.content_item_source_lines
+            let target_row = self
+                .content_item_source_lines
                 .get(self.content_cursor)
                 .copied()
                 .unwrap_or(0)
@@ -4370,9 +4612,14 @@ impl App {
             self.editor = Editor::new(lines);
             self.editor.set_line_wrap(self.config.editor.line_wrap);
             self.editor.set_tab_width(self.config.editor.tab_width);
-            self.editor.set_padding(self.config.editor.left_padding, self.config.editor.right_padding);
-            self.editor.set_line_number_mode(self.config.editor.line_numbers);
-            self.editor.set_scrolloff(self.config.editor.scrolloff as usize);
+            self.editor.set_padding(
+                self.config.editor.left_padding,
+                self.config.editor.right_padding,
+            );
+            self.editor
+                .set_line_number_mode(self.config.editor.line_numbers);
+            self.editor
+                .set_scrolloff(self.config.editor.scrolloff as usize);
 
             self.vim_mode = VimMode::Normal;
             self.vim.mode = crate::vim::VimMode::Normal;
@@ -4402,7 +4649,8 @@ impl App {
                 Some(self.theme.editor.bold),
                 Some(self.theme.editor.italic),
             );
-            self.editor.set_frontmatter_color(self.theme.content.frontmatter);
+            self.editor
+                .set_frontmatter_color(self.theme.content.frontmatter);
 
             self.editor.set_cursor(target_row, 0);
 
@@ -4412,7 +4660,10 @@ impl App {
             // - Otherwise, try to maintain similar viewport position
             let view_height = self.editor_view_height.max(10);
             // content_scroll_offset is 1-indexed, so <= 1 means at the top
-            let editor_scroll = if self.frontmatter_hidden && content_start_line > 0 && self.content_scroll_offset <= 1 {
+            let editor_scroll = if self.frontmatter_hidden
+                && content_start_line > 0
+                && self.content_scroll_offset <= 1
+            {
                 // Frontmatter was hidden, user was at/near top of content
                 // Start from line 0 unless cursor would be off screen
                 if target_row < view_height {
@@ -4427,7 +4678,8 @@ impl App {
                 target_row.saturating_sub(cursor_offset_from_top)
             };
 
-            self.editor.set_scroll_offset(editor_scroll.min(line_count.saturating_sub(1)));
+            self.editor
+                .set_scroll_offset(editor_scroll.min(line_count.saturating_sub(1)));
             self.editor_scroll_top = self.editor.scroll_offset();
 
             self.update_editor_block();
@@ -4521,7 +4773,7 @@ impl App {
         self.editor.set_selection_style(
             Style::default()
                 .fg(self.theme.foreground)
-                .bg(self.theme.selection)
+                .bg(self.theme.selection),
         );
         self.editor.set_cursor_line_style(Style::default());
     }
@@ -4543,7 +4795,8 @@ impl App {
         if let Some(note) = self.notes.get_mut(self.selected_note) {
             note.content = self.editor.lines().join("\n");
             // Re-parse frontmatter after content change
-            let (frontmatter, content_start_line) = super::frontmatter::Frontmatter::parse(&note.content);
+            let (frontmatter, content_start_line) =
+                super::frontmatter::Frontmatter::parse(&note.content);
             note.frontmatter = frontmatter;
             note.content_start_line = content_start_line;
             // Save to file
@@ -4644,7 +4897,7 @@ impl App {
     // as quite bloated, the threshold of ekphos should be no more than 15mb if possible
     // but unfortunately still can't find a better syntax highlighter than syntect for now
     // I will enable this lazy load by default so markdown file without code syntax won't need to take extra 30mb of memory
-    
+
     pub fn poll_highlighter(&mut self) {
         if let Ok(highlighter) = self.highlighter_receiver.try_recv() {
             self.highlighter = Some(highlighter);
@@ -4753,7 +5006,8 @@ impl App {
             .iter()
             .map(|range| {
                 // Extract target from the wiki link at this position
-                let is_valid = self.validate_wiki_link_at(range.row, range.start_col, &valid_targets);
+                let is_valid =
+                    self.validate_wiki_link_at(range.row, range.start_col, &valid_targets);
                 crate::editor::WikiLinkRange {
                     row: range.row,
                     start_col: range.start_col,
@@ -4766,7 +5020,12 @@ impl App {
         self.editor.set_wiki_link_ranges(validated_ranges);
     }
 
-    fn validate_wiki_link_at(&self, row: usize, start_col: usize, valid_targets: &HashSet<String>) -> bool {
+    fn validate_wiki_link_at(
+        &self,
+        row: usize,
+        start_col: usize,
+        valid_targets: &HashSet<String>,
+    ) -> bool {
         let line = match self.editor.lines().get(row) {
             Some(l) => *l,
             None => return false,
@@ -4821,15 +5080,21 @@ impl App {
         let index_path = search::get_index_path(&notes_dir);
         let notes_dir_str = notes_dir.to_string_lossy().to_string();
 
-        let note_data: Vec<(usize, String, String, u64)> = self.notes
+        let note_data: Vec<(usize, String, String, u64)> = self
+            .notes
             .iter()
             .enumerate()
             .filter_map(|(idx, note)| {
                 let path = note.file_path.as_ref()?;
-                let rel_path = path.strip_prefix(&notes_dir).ok()?
-                    .to_string_lossy().to_string();
-                let mtime = note.modified_time?
-                    .duration_since(std::time::UNIX_EPOCH).ok()?
+                let rel_path = path
+                    .strip_prefix(&notes_dir)
+                    .ok()?
+                    .to_string_lossy()
+                    .to_string();
+                let mtime = note
+                    .modified_time?
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()?
                     .as_secs();
                 Some((idx, rel_path, note.content.clone(), mtime))
             })
@@ -4861,7 +5126,8 @@ impl App {
         std::thread::spawn(move || {
             let build_full_with_progress = |note_data: &[(usize, String, String, u64)],
                                             notes_dir: &str,
-                                            progress: &Arc<AtomicUsize>| -> SearchIndex {
+                                            progress: &Arc<AtomicUsize>|
+             -> SearchIndex {
                 let mut index = SearchIndex {
                     version: 2,
                     notes_dir: notes_dir.to_string(),
@@ -4883,7 +5149,8 @@ impl App {
                             .iter()
                             .map(|(_, path, _, mtime)| (path.clone(), *mtime))
                             .collect();
-                        let current_paths: Vec<String> = current_files.iter().map(|(p, _)| p.clone()).collect();
+                        let current_paths: Vec<String> =
+                            current_files.iter().map(|(p, _)| p.clone()).collect();
 
                         cached.remove_deleted(&current_paths);
                         let stale = cached.get_stale_files(&current_files);
@@ -4972,12 +5239,16 @@ impl App {
         const MAX_PREFIX_TERMS_SCANNED: usize = 15000;
         const MAX_LINE_SCAN_NOTES: usize = 15000;
 
-        let create_result = |note_idx: usize, line_num: usize, line: &str, query_lower: &str| -> Option<ContentSearchResult> {
+        let create_result = |note_idx: usize,
+                             line_num: usize,
+                             line: &str,
+                             query_lower: &str|
+         -> Option<ContentSearchResult> {
             let note = self.notes.get(note_idx)?;
             let wiki_path = self.get_wiki_path_for_note(note_idx);
-            let folder_hint = wiki_path.as_ref().and_then(|wp| {
-                wp.rfind('/').map(|pos| wp[..pos].to_string())
-            });
+            let folder_hint = wiki_path
+                .as_ref()
+                .and_then(|wp| wp.rfind('/').map(|pos| wp[..pos].to_string()));
 
             let line_lower = line.to_lowercase();
             let match_byte_pos = line_lower.find(query_lower)?;
@@ -4993,9 +5264,12 @@ impl App {
             if match_start_char == 0 {
                 score += 20;
             }
-            if match_start_char == 0 || !line_chars.get(match_start_char.saturating_sub(1))
-                .map(|c| c.is_alphanumeric())
-                .unwrap_or(false) {
+            if match_start_char == 0
+                || !line_chars
+                    .get(match_start_char.saturating_sub(1))
+                    .map(|c| c.is_alphanumeric())
+                    .unwrap_or(false)
+            {
                 score += 10;
             }
 
@@ -5031,7 +5305,9 @@ impl App {
                 if seen.insert((note_idx, line_num)) {
                     if let Some(lines) = self.search_index.lines.get(note_idx) {
                         if let Some(line) = lines.get(line_num) {
-                            if let Some(result) = create_result(note_idx, line_num, line, &query_lower) {
+                            if let Some(result) =
+                                create_result(note_idx, line_num, line, &query_lower)
+                            {
                                 results.push(result);
                             }
                         }
@@ -5047,7 +5323,8 @@ impl App {
 
             for (word, positions) in &self.search_index.terms {
                 // Early exit conditions
-                if terms_scanned >= MAX_PREFIX_TERMS_SCANNED || prefix_matches >= MAX_PREFIX_MATCHES {
+                if terms_scanned >= MAX_PREFIX_TERMS_SCANNED || prefix_matches >= MAX_PREFIX_MATCHES
+                {
                     break;
                 }
                 terms_scanned += 1;
@@ -5060,7 +5337,9 @@ impl App {
                         if seen.insert((note_idx, line_num)) {
                             if let Some(lines) = self.search_index.lines.get(note_idx) {
                                 if let Some(line) = lines.get(line_num) {
-                                    if let Some(result) = create_result(note_idx, line_num, line, &query_lower) {
+                                    if let Some(result) =
+                                        create_result(note_idx, line_num, line, &query_lower)
+                                    {
                                         results.push(result);
                                         prefix_matches += 1;
                                     }
@@ -5086,7 +5365,8 @@ impl App {
                         continue;
                     }
                     if line.to_lowercase().contains(&query_lower) {
-                        if let Some(result) = create_result(note_idx, line_num, line, &query_lower) {
+                        if let Some(result) = create_result(note_idx, line_num, line, &query_lower)
+                        {
                             seen.insert((note_idx, line_num));
                             results.push(result);
                             if results.len() >= MAX_RESULTS {
@@ -5099,7 +5379,8 @@ impl App {
         }
 
         results.sort_by(|a, b| {
-            b.score.cmp(&a.score)
+            b.score
+                .cmp(&a.score)
                 .then_with(|| a.display_name.cmp(&b.display_name))
                 .then_with(|| a.line_number.cmp(&b.line_number))
         });
@@ -5128,8 +5409,11 @@ impl App {
             )
         };
 
-        if mouse_x < inner_x || mouse_x >= inner_x + inner_width ||
-           mouse_y < inner_y || mouse_y >= inner_y + inner_height {
+        if mouse_x < inner_x
+            || mouse_x >= inner_x + inner_width
+            || mouse_y < inner_y
+            || mouse_y >= inner_y + inner_height
+        {
             return None;
         }
 
@@ -5153,10 +5437,7 @@ impl App {
         const SCROLL_THRESHOLD: u16 = 2;
 
         let (inner_y, inner_height) = if self.zen_mode {
-            (
-                self.editor_area.y,
-                self.editor_area.height,
-            )
+            (self.editor_area.y, self.editor_area.height)
         } else {
             (
                 self.editor_area.y + 1,
@@ -5197,7 +5478,8 @@ impl App {
             selected_index,
             scroll_offset,
             ..
-        } = &mut self.search_picker {
+        } = &mut self.search_picker
+        {
             *mode = match *mode {
                 SearchPickerMode::Files => SearchPickerMode::Content,
                 SearchPickerMode::Content => SearchPickerMode::Files,
@@ -5259,9 +5541,8 @@ impl App {
                     });
                 let score = score?;
 
-                let folder_hint = wiki_path.and_then(|wp| {
-                    wp.rfind('/').map(|pos| wp[..pos].to_string())
-                });
+                let folder_hint =
+                    wiki_path.and_then(|wp| wp.rfind('/').map(|pos| wp[..pos].to_string()));
 
                 Some(FilePickerResult {
                     display_name: note.title.clone(),
@@ -5273,7 +5554,9 @@ impl App {
             .collect();
 
         results.sort_by(|a, b| {
-            b.score.cmp(&a.score).then_with(|| a.display_name.cmp(&b.display_name))
+            b.score
+                .cmp(&a.score)
+                .then_with(|| a.display_name.cmp(&b.display_name))
         });
 
         results
@@ -5297,7 +5580,8 @@ impl App {
                 selected_index,
                 scroll_offset,
                 ..
-            } = &mut self.search_picker {
+            } = &mut self.search_picker
+            {
                 *content_results = results;
                 *search_in_progress = false;
                 *selected_index = 0;
@@ -5313,19 +5597,21 @@ impl App {
             search_in_progress,
             search_id: state_search_id,
             ..
-        } = &mut self.search_picker {
+        } = &mut self.search_picker
+        {
             *search_in_progress = true;
             *state_search_id = search_id;
         }
 
-        let notes: Vec<(usize, String, String, Option<String>)> = self.notes
+        let notes: Vec<(usize, String, String, Option<String>)> = self
+            .notes
             .iter()
             .enumerate()
             .map(|(idx, note)| {
                 let wiki_path = self.get_wiki_path_for_note(idx);
-                let folder_hint = wiki_path.as_ref().and_then(|wp| {
-                    wp.rfind('/').map(|pos| wp[..pos].to_string())
-                });
+                let folder_hint = wiki_path
+                    .as_ref()
+                    .and_then(|wp| wp.rfind('/').map(|pos| wp[..pos].to_string()));
                 (idx, note.title.clone(), note.content.clone(), folder_hint)
             })
             .collect();
@@ -5352,15 +5638,18 @@ impl App {
                         // Calculate score
                         let mut score = 100;
                         if title_matches {
-                            score += 50; 
+                            score += 50;
                         }
                         if match_start_char == 0 {
-                            score += 20; 
+                            score += 20;
                         }
                         // Word boundary bonus - use char position, not byte position
-                        if match_start_char == 0 || !line_chars.get(match_start_char.saturating_sub(1))
-                            .map(|c| c.is_alphanumeric())
-                            .unwrap_or(false) {
+                        if match_start_char == 0
+                            || !line_chars
+                                .get(match_start_char.saturating_sub(1))
+                                .map(|c| c.is_alphanumeric())
+                                .unwrap_or(false)
+                        {
                             score += 10;
                         }
 
@@ -5384,7 +5673,7 @@ impl App {
                         results.push(ContentSearchResult {
                             display_name: title.clone(),
                             matched_line,
-                            line_number: line_num + 1, 
+                            line_number: line_num + 1,
                             note_index: note_idx,
                             folder_hint: folder_hint.clone(),
                             score,
@@ -5396,7 +5685,8 @@ impl App {
             }
 
             results.sort_by(|a, b| {
-                b.score.cmp(&a.score)
+                b.score
+                    .cmp(&a.score)
                     .then_with(|| a.display_name.cmp(&b.display_name))
                     .then_with(|| a.line_number.cmp(&b.line_number))
             });
@@ -5417,7 +5707,8 @@ impl App {
                 selected_index,
                 scroll_offset,
                 ..
-            } = &mut self.search_picker {
+            } = &mut self.search_picker
+            {
                 if response.search_id == *search_id {
                     *content_results = response.results;
                     *search_in_progress = false;
@@ -5429,7 +5720,10 @@ impl App {
     }
 
     pub fn is_content_search_in_progress(&self) -> bool {
-        if let SearchPickerState::Open { search_in_progress, .. } = &self.search_picker {
+        if let SearchPickerState::Open {
+            search_in_progress, ..
+        } = &self.search_picker
+        {
             *search_in_progress
         } else {
             false
@@ -5437,7 +5731,8 @@ impl App {
     }
 
     pub fn update_search_picker_results(&mut self) {
-        let (query, mode) = if let SearchPickerState::Open { query, mode, .. } = &self.search_picker {
+        let (query, mode) = if let SearchPickerState::Open { query, mode, .. } = &self.search_picker
+        {
             (query.clone(), *mode)
         } else {
             return;
@@ -5446,14 +5741,26 @@ impl App {
         match mode {
             SearchPickerMode::Files => {
                 if query.is_empty() {
-                    if let SearchPickerState::Open { file_results, selected_index, scroll_offset, .. } = &mut self.search_picker {
+                    if let SearchPickerState::Open {
+                        file_results,
+                        selected_index,
+                        scroll_offset,
+                        ..
+                    } = &mut self.search_picker
+                    {
                         file_results.clear();
                         *selected_index = 0;
                         *scroll_offset = 0;
                     }
                 } else {
                     let new_results = self.build_file_picker_results(&query);
-                    if let SearchPickerState::Open { file_results, selected_index, scroll_offset, .. } = &mut self.search_picker {
+                    if let SearchPickerState::Open {
+                        file_results,
+                        selected_index,
+                        scroll_offset,
+                        ..
+                    } = &mut self.search_picker
+                    {
                         *file_results = new_results;
                         *selected_index = 0;
                         *scroll_offset = 0;
@@ -5462,7 +5769,14 @@ impl App {
             }
             SearchPickerMode::Content => {
                 if query.is_empty() {
-                    if let SearchPickerState::Open { content_results, selected_index, scroll_offset, search_in_progress, .. } = &mut self.search_picker {
+                    if let SearchPickerState::Open {
+                        content_results,
+                        selected_index,
+                        scroll_offset,
+                        search_in_progress,
+                        ..
+                    } = &mut self.search_picker
+                    {
                         content_results.clear();
                         *selected_index = 0;
                         *scroll_offset = 0;
@@ -5477,15 +5791,20 @@ impl App {
 
     pub fn select_search_picker_result(&mut self) {
         let result_info = if let SearchPickerState::Open {
-            mode, file_results, content_results, selected_index, ..
-        } = &self.search_picker {
+            mode,
+            file_results,
+            content_results,
+            selected_index,
+            ..
+        } = &self.search_picker
+        {
             match mode {
-                SearchPickerMode::Files => {
-                    file_results.get(*selected_index).map(|r| (r.note_index, None))
-                }
-                SearchPickerMode::Content => {
-                    content_results.get(*selected_index).map(|r| (r.note_index, Some(r.line_number)))
-                }
+                SearchPickerMode::Files => file_results
+                    .get(*selected_index)
+                    .map(|r| (r.note_index, None)),
+                SearchPickerMode::Content => content_results
+                    .get(*selected_index)
+                    .map(|r| (r.note_index, Some(r.line_number))),
             }
         } else {
             None
@@ -5506,7 +5825,12 @@ impl App {
                         if parent == notes_root {
                             break;
                         }
-                        if !self.folder_states.get(&parent.to_path_buf()).copied().unwrap_or(false) {
+                        if !self
+                            .folder_states
+                            .get(&parent.to_path_buf())
+                            .copied()
+                            .unwrap_or(false)
+                        {
                             self.folder_states.insert(parent.to_path_buf(), true);
                             needs_rebuild = true;
                         }
@@ -5520,7 +5844,10 @@ impl App {
             }
 
             for (idx, item) in self.sidebar_items.iter().enumerate() {
-                if let SidebarItemKind::Note { note_index: idx_note } = &item.kind {
+                if let SidebarItemKind::Note {
+                    note_index: idx_note,
+                } = &item.kind
+                {
                     if *idx_note == note_index {
                         self.end_buffer_search();
                         self.selected_sidebar_index = idx;
@@ -5536,7 +5863,9 @@ impl App {
                             let mut best_match_idx = 0;
                             let mut best_match_diff = usize::MAX;
 
-                            for (i, &source_line) in self.content_item_source_lines.iter().enumerate() {
+                            for (i, &source_line) in
+                                self.content_item_source_lines.iter().enumerate()
+                            {
                                 if source_line == target_line_0indexed {
                                     best_match_idx = i;
                                     break;
@@ -5555,10 +5884,12 @@ impl App {
                                 }
                             }
 
-                            self.content_cursor = best_match_idx.min(self.content_items.len().saturating_sub(1));
+                            self.content_cursor =
+                                best_match_idx.min(self.content_items.len().saturating_sub(1));
 
                             let visible_height = 20usize; // Approximate visible lines
-                            let target_scroll = self.content_cursor.saturating_sub(visible_height / 3);
+                            let target_scroll =
+                                self.content_cursor.saturating_sub(visible_height / 3);
                             self.content_scroll_offset = target_scroll;
                         }
 
@@ -5576,7 +5907,15 @@ impl App {
         // Must match POPUP_MAX_VISIBLE_ITEMS / POPUP_MAX_VISIBLE_ITEMS_CONTENT in ui/file_picker.rs
         const MAX_VISIBLE_FILES: usize = 10;
         const MAX_VISIBLE_CONTENT: usize = 18;
-        if let SearchPickerState::Open { mode, file_results, content_results, selected_index, scroll_offset, .. } = &mut self.search_picker {
+        if let SearchPickerState::Open {
+            mode,
+            file_results,
+            content_results,
+            selected_index,
+            scroll_offset,
+            ..
+        } = &mut self.search_picker
+        {
             let (results_len, max_visible) = match mode {
                 SearchPickerMode::Files => (file_results.len(), MAX_VISIBLE_FILES),
                 SearchPickerMode::Content => (content_results.len(), MAX_VISIBLE_CONTENT),
@@ -5604,7 +5943,15 @@ impl App {
         // Must match POPUP_MAX_VISIBLE_ITEMS / POPUP_MAX_VISIBLE_ITEMS_CONTENT in ui/file_picker.rs
         const MAX_VISIBLE_FILES: usize = 10;
         const MAX_VISIBLE_CONTENT: usize = 18;
-        if let SearchPickerState::Open { mode, file_results, content_results, selected_index, scroll_offset, .. } = &mut self.search_picker {
+        if let SearchPickerState::Open {
+            mode,
+            file_results,
+            content_results,
+            selected_index,
+            scroll_offset,
+            ..
+        } = &mut self.search_picker
+        {
             let (results_len, max_visible) = match mode {
                 SearchPickerMode::Files => (file_results.len(), MAX_VISIBLE_FILES),
                 SearchPickerMode::Content => (content_results.len(), MAX_VISIBLE_CONTENT),
@@ -5651,8 +5998,10 @@ impl App {
         let results_area = self.search_picker_results_area;
 
         // Check if click is in results area
-        if x < results_area.x || x >= results_area.x + results_area.width
-            || y < results_area.y || y >= results_area.y + results_area.height
+        if x < results_area.x
+            || x >= results_area.x + results_area.width
+            || y < results_area.y
+            || y >= results_area.y + results_area.height
         {
             return 0;
         }
@@ -5670,9 +6019,7 @@ impl App {
         } = &mut self.search_picker
         {
             let clicked_index = match mode {
-                SearchPickerMode::Content => {
-                    *scroll_offset + clicked_row
-                }
+                SearchPickerMode::Content => *scroll_offset + clicked_row,
                 SearchPickerMode::Files => {
                     let mut accumulated_lines = 0;
                     let mut target_index = None;
@@ -5698,7 +6045,9 @@ impl App {
             if clicked_index < results_len {
                 *selected_index = clicked_index;
                 let now = std::time::Instant::now();
-                let is_double_click = if let Some((last_time, last_index)) = self.search_picker_last_click {
+                let is_double_click = if let Some((last_time, last_index)) =
+                    self.search_picker_last_click
+                {
                     last_index == clicked_index && now.duration_since(last_time).as_millis() < 400
                 } else {
                     false
@@ -5745,22 +6094,20 @@ impl App {
 fn fetch_remote_image_blocking(url: &str) -> Option<DynamicImage> {
     use std::io::Read;
 
-    let response = ureq::get(url)
-        .set("User-Agent", "ekphos/0.4")
-        .call()
-        .ok()?;
+    let response = ureq::get(url).set("User-Agent", "ekphos/0.4").call().ok()?;
 
-    let content_type = response
-        .header("Content-Type")
-        .unwrap_or("")
-        .to_lowercase();
+    let content_type = response.header("Content-Type").unwrap_or("").to_lowercase();
 
     if !content_type.starts_with("image/") {
         return None;
     }
 
     let mut bytes = Vec::new();
-    response.into_reader().take(10 * 1024 * 1024).read_to_end(&mut bytes).ok()?;
+    response
+        .into_reader()
+        .take(10 * 1024 * 1024)
+        .read_to_end(&mut bytes)
+        .ok()?;
 
     image::load_from_memory(&bytes).ok()
 }
@@ -5843,7 +6190,12 @@ fn fuzzy_match(text: &str, query: &str) -> Option<i32> {
                 consecutive_bonus += 20;
             }
 
-            if text_idx == 0 || matches!(text_chars.get(text_idx.saturating_sub(1)), Some(' ' | '_' | '-')) {
+            if text_idx == 0
+                || matches!(
+                    text_chars.get(text_idx.saturating_sub(1)),
+                    Some(' ' | '_' | '-')
+                )
+            {
                 score += 30;
             }
 
